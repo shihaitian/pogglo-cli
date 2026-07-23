@@ -36,6 +36,14 @@ test('whoami without config points at login', () => {
   assert.match(r.stdout, /pogglo login/);
 });
 
+// MCP server（2026-07-23）：与 CLI 同包（bin: pogglo-mcp），共享 pack.js。离线只验注册面。
+test('mcp: buildServer registers publish_game + list_games', async () => {
+  const { buildServer } = await import('../src/mcp.js');
+  const { server, tools } = buildServer();
+  assert.ok(server);
+  assert.deepEqual(tools.sort(), ['list_games', 'publish_game']);
+});
+
 // 账号体系（2026-07-23）：login 是两步邮箱验证码流程，缺 --email 时给出可执行指引
 test('login without --email explains the two-step email flow', () => {
   const r = run(['login']);

@@ -27,6 +27,13 @@
 - [x] publish 打 `/v1/submit`：Bearer 鉴权 + `x-title`（--title > pogglo.json > index.html \<title\>）+ `x-slug`；输出 page_url（创作者优先 URL）/play_url（2026-07-23）
 - [x] 测试 10/10 绿；生产真发布冒烟通过（配对码 POG-4P34 → e2e-smoke-game → 已清理）（2026-07-23）
 
+## ✅ MCP server 并包（2026-07-23，legacy mcp/ 复活 + M3"消灭 pack.js 双副本"提前达成）
+
+- [x] `src/mcp.js` + bin `pogglo-mcp`（同 npm 包第二入口）：publish_game（Bearer 或 `code` 配对码参数；元数据落 pogglo.json；ai_fix_prompt 透传给调用方 AI）+ list_games（2026-07-23）
+- [x] 与 CLI 共享 pack.js / ~/.pogglo 登录态；配对码路径与 list_games 不读本地 config endpoint（防 localhost 劫持，与 CLI 同规则）（2026-07-23）
+- [x] 测试 11 条（新增 buildServer 注册面）；真 MCP 客户端生产冒烟：stdio 起服 → tools/list → 配对码 publish_game 上线双域 URL → 清理，全通（2026-07-23）
+- [x] 依赖新增 @modelcontextprotocol/sdk + zod（2026-07-23）
+
 ## 🔨 进行中
 
 （空 — 领任务时移入本区并写上名字/会话与开始日期）
@@ -64,4 +71,5 @@
 |---|---|---|
 | 0.1.0 | 2026-07-23 | npm 首发抢注包名（旧协议，随后被 0.2.0 取代） |
 | 0.2.0 | 2026-07-23 | v1 生产协议：邮箱验证码登录（两步零 TTY）、`publish --code POG-XXXX` 配对码免登录、默认生产端点、`/v1/submit` Bearer 鉴权、`ai_fix_prompt` 透传、README 面向创作者重写；测试 10/10 |
+| 0.3.0 | 未发布 | MCP server 并包（bin: pogglo-mcp）+ list_games/publish_game 生产验证——**待 npm publish** |
 | 0.2.1 | 2026-07-23 | 默认端点切正式域 `https://pogglo.com`（/v1/* Worker 路由已生效）；已发布为 @latest，git tag v0.2.1 = `13749d9`（shasum 与 npm 线上核对一致） |
