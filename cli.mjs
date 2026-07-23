@@ -27,8 +27,7 @@ async function api(pathname, opts = {}) {
 
 if (cmd === 'login') {
   const token = val('--token');
-  if (!token) die('用法: pogglo login --token pog_xxxx
-（token 在 https://pogglo.pages.dev/publish/ 登录后可复制）');
+  if (!token) die('用法: pogglo login --token pog_xxxx  (token 在 https://pogglo.pages.dev/publish/ 登录后可复制)');
   const out = await api('/v1/me', { headers: { authorization: `Bearer ${token}` } });
   if (!out.ok) die('token 无效，请到 https://pogglo.pages.dev/publish/ 重新获取');
   fs.writeFileSync(CONF, JSON.stringify({ handle: out.handle, token }, null, 2));
