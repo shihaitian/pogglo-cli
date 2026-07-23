@@ -22,7 +22,7 @@ function run(args, cwd) {
 test('help exits 0 and documents all commands', () => {
   const r = run(['help']);
   assert.equal(r.status, 0);
-  for (const cmd of ['login', 'publish', 'whoami']) assert.match(r.stdout, new RegExp(cmd));
+  for (const cmd of ['login', 'publish', 'link', 'whoami']) assert.match(r.stdout, new RegExp(cmd));
 });
 
 test('unknown command exits non-zero', () => {
@@ -60,6 +60,40 @@ test('publish with a valid package but no sign-in demands login', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /Not signed in/);
   assert.match(r.stderr, /--email/);
+});
+
+// link（2026-07-23）：把文件夹绑定到已发布游戏（pogglo.json 记 slug）。离线只测错误路径与解析。
+test('link without a game reference explains usage and exits non-zero', () => {
+  const r = run(['link']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /npx pogglo link <handle>\/<slug>/);
+});
+
+test('link with an unparseable reference fails with an actionable error', () => {
+  const r = run(['link', 'https://pogglo.com/a/b/c/d']);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Could not parse a game reference/);
+  assert.match(r.stderr, /npx pogglo link/);
+});
+
+test('parseGameRef accepts slug, handle/slug, and every game URL shape', async () => {
+  const { parseGameRef } = await import('../src/index.js');
+  assert.deepEqual(parseGameRef('cow-puzzle'), { slug: 'cow-puzzle', handle: null });
+  assert.deepEqual(parseGameRef('shihaitian/cow-puzzle'), { slug: 'cow-puzzle', handle: 'shihaitian' });
+  assert.deepEqual(parseGameRef('https://pogglo.com/shihaitian/cow-puzzle/'), { slug: 'cow-puzzle', handle: 'shihaitian' });
+  assert.deepEqual(parseGameRef('https://pogglo.net/play/cow-puzzle/'), { slug: 'cow-puzzle', handle: null });
+  assert.deepEqual(parseGameRef('https://pogglo.com/p/?slug=cow-puzzle'), { slug: 'cow-puzzle', handle: null });
+  assert.equal(parseGameRef('https://pogglo.com/a/b/c'), null);
+  assert.equal(parseGameRef(''), null);
+});
+
+test('projectRootFor keeps pogglo.json out of build output folders', async () => {
+  const { projectRootFor } = await import('../src/index.js');
+  const root = path.join(os.tmpdir(), 'proj');
+  const dist = path.join(root, 'dist');
+  assert.equal(projectRootFor(root, dist), root); // publish <root>, package in dist/
+  assert.equal(projectRootFor(dist, dist), root); // publish dist directly → climb out
+  assert.equal(projectRootFor(root, root), root); // index.html at root
 });
 
 test('publish in a dir without index.html fails with an actionable AI-readable error', () => {

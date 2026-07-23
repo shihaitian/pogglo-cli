@@ -89,7 +89,9 @@ export function buildServer() {
         'x-title': encodeURIComponent(metadata.title),
         'user-agent': 'pogglo-mcp',
       };
-      if (slug) headers['x-slug'] = slug;
+      // Slug: explicit param > slug remembered in pogglo.json from a previous
+      // publish — so republishing updates the SAME game even if the title changed.
+      if (slug ?? existing.slug) headers['x-slug'] = slug ?? existing.slug;
       if (code) headers['x-pogglo-code'] = code;
       else headers['authorization'] = `Bearer ${c.token}`;
 
@@ -101,6 +103,10 @@ export function buildServer() {
         return errText(`Could not reach the pogglo platform at ${endpoint} (${err.cause?.code ?? err.message}).`);
       }
       if (!body.ok) return errText(`Publish rejected (${body.code}): ${errMsg(body)}`);
+      // Remember the identity the server confirmed (see CLI publish for rationale).
+      if (body.slug && existing.slug !== body.slug) {
+        fs.writeFileSync(manifestPath, JSON.stringify({ ...existing, ...metadata, slug: body.slug }, null, 2));
+      }
       return text(
         `Published "${metadata.title}" by @${body.handle}\n` +
           `Game page  → ${body.page_url}\n` +

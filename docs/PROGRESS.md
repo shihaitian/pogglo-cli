@@ -34,6 +34,15 @@
 - [x] 测试 11 条（新增 buildServer 注册面）；真 MCP 客户端生产冒烟：stdio 起服 → tools/list → 配对码 publish_game 上线双域 URL → 清理，全通（2026-07-23）
 - [x] 依赖新增 @modelcontextprotocol/sdk + zod（2026-07-23）
 
+## ✅ 项目身份闭环（2026-07-23，用户拍板：pogglo.json 记 slug + link 命令）
+
+- [x] publish 成功后把服务端确认的 slug 写进项目根 `pogglo.json`（产物目录会被 rebuild 清掉，故写根目录；`pogglo publish dist` 场景自动爬到父目录）；后续 publish 自动带 `x-slug` → 改标题/换机器都精确更新同一款（2026-07-23）
+- [x] 新命令 `link <slug | handle/slug | 游戏URL>`：消费 `GET /v1/games/:slug` 反向恢复 pogglo.json（fresh clone 一条命令绑回）；支持 /handle/slug/、/p/?slug=、/play/slug/ 三种 URL 形态；错主人/查无此游戏都有三要素报错（2026-07-23）
+- [x] MCP publish_game 同步：读 pogglo.json 已存 slug 自动带 x-slug，成功后写回 body.slug（2026-07-23）
+- [x] 服务端配套（主工程 api/src/index.mjs）：配对码首次成功发布后绑定 slug（KV `code:`），同码重发=覆盖更新，每次使用 TTL 顺延 24h——落实 ARCHITECTURE §6 M1 拍板语义（2026-07-23）
+- [x] 测试 10→15 条全绿；link 生产冒烟通过（URL 解析/写文件/错主人报错）（2026-07-23）
+- [ ] 遗留：发版（minor：新命令+新行为）；M3 的"配对码语义端到端验证"现在具备验证条件
+
 ## 🔨 进行中
 
 （空 — 领任务时移入本区并写上名字/会话与开始日期）

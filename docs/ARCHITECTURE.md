@@ -67,9 +67,16 @@ content-type: application/zip
 authorization: Bearer <token>        # 登录路径
 x-pogglo-code: POG-XXXX              # 或：配对码路径（网页签发，免登录）
 x-title: <encodeURIComponent(title)> # --title > pogglo.json > index.html <title>
-x-slug:  <slug>                      # 可选 --slug
+x-slug:  <slug>                      # --slug > pogglo.json 的 slug（项目身份，见下）
 body: zip buffer
 ```
+
+**项目身份 `pogglo.json`（2026-07-23）**：发布成功后 CLI 把服务端确认的 slug 写进
+项目根的 `pogglo.json`（`{ "title", "slug" }`，产物目录如 dist/ 会被重建清掉，所以写
+根目录；建议提交 git）。之后每次 publish 自动带 `x-slug` → 改标题/换机器都精确更新同
+一款游戏。`link` 命令（`npx pogglo link <slug | handle/slug | 游戏URL>`）消费公开接口
+`GET /v1/games/:slug` 反向恢复该文件——fresh clone 像认领一样一条命令绑回自己的游戏。
+服务端配套：配对码首次成功发布后绑定 slug（KV `code:` 记录），同码重发=覆盖更新。
 
 endpoint 解析：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` → 生产默认
 `https://pogglo.com`（/v1/* 同域路由到 Worker；旧 workers.dev 子域已停用）。**例外**：走配对码时忽略 config 里的
@@ -92,7 +99,7 @@ endpoint（配对码是生产语境的委托，防止旧 localhost 配置劫持�
 
 ## 5. v1 范围与非目标
 
-**范围**：`login`（两步邮箱验证码）/ `publish [dir] [--code POG-XXXX] [--title] [--slug]` / `whoami` + 上述协议。
+**范围**：`login`（两步邮箱验证码）/ `publish [dir] [--code POG-XXXX] [--title] [--slug]` / `link <game>` / `whoami` + 上述协议。
 **非目标**（明确不做，别顺手加）：
 
 - ❌ 逐客户端插件（VS Code 扩展等）— CLI 通吃是决策 D2
