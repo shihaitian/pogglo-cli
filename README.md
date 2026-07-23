@@ -2,25 +2,36 @@
 
 Publish AI-made browser games from your terminal — or let your AI agent do it for you.
 
+## The fast path: pairing code
+
+Grab a pairing code from the pogglo website (Publish page), then — no sign-in needed:
+
 ```bash
-npx pogglo publish
+npx pogglo publish --code POG-XXXX
 ```
 
 `publish` finds your built game automatically (`./dist`, `./build`, `./out`, `./public` or the
-current folder — whichever contains `index.html`), zips it, uploads it, and prints a playable URL.
-First run logs you in automatically; after that it's zero-interaction.
+current folder — whichever contains `index.html`), zips it, uploads it, and prints your game
+page URL. If the upload is rejected, the error message tells you (or your AI agent) exactly
+what to fix and what to run next — fix and re-publish with the same code.
+
+## Sign in instead (email, no password)
 
 ```bash
-npx pogglo login --author yourhandle   # optional: pick your handle
+npx pogglo login --email you@example.com            # step 1: emails you a 6-digit code
+npx pogglo login --email you@example.com --code 123456   # step 2: done
+npx pogglo publish                                  # from your game directory
 npx pogglo whoami
 ```
 
-Optional `pogglo.json` next to your `index.html` controls the game page copy
-(`title`, `tagline`, `description`, `howToPlay`, `controls`, `faq`, `tags`, `emoji`, …).
-Run `npx pogglo help` for details.
+## Options
 
-If publishing is rejected, the error message tells you (or your AI agent) exactly
-what to fix and what to run next — fix and re-publish.
+```bash
+npx pogglo publish [dir] [--title "My Game"] [--slug my-game]
+```
+
+Title falls back to `pogglo.json` (`{ "title": "..." }`) next to your `index.html`,
+then to the page's `<title>`. Run `npx pogglo help` for everything.
 
 ---
 

@@ -50,26 +50,38 @@ src/pack.js       产物层：packageDirFor（. dist build out public www 顺序
 
 ## 4. 协议契约（跨仓库，改动必须与 ../pogglo/platform 同步拍板）
 
-### 请求
+### 认证（v1，2026-07-23 转正）
 
 ```
-POST {endpoint}/api/publish
+POST {endpoint}/v1/auth/send-code    { "email" }              → 邮箱收 6 位码（本地平台回显 dev_code）
+POST {endpoint}/v1/auth/verify       { "email", "code" }      → { ok, token, handle, is_new }
+```
+
+两步、零 TTY——AI agent 分两次调用即可完成登录，token 存 `~/.pogglo/config.json`。
+
+### 发布
+
+```
+POST {endpoint}/v1/submit
 content-type: application/zip
-x-pogglo-token:  <login 生成的 token>        # v1 现状
-x-pogglo-author: <handle>
-x-pogglo-code:   <ABC123>                    # M1 规划：发码流，替代 login（见 §6）
+authorization: Bearer <token>        # 登录路径
+x-pogglo-code: POG-XXXX              # 或：配对码路径（网页签发，免登录）
+x-title: <encodeURIComponent(title)> # --title > pogglo.json > index.html <title>
+x-slug:  <slug>                      # 可选 --slug
 body: zip buffer
 ```
 
-endpoint 解析顺序：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` 环境变量 → `http://localhost:8788`（生产端点定域名后改默认值，属 minor 版本）。
+endpoint 解析：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` → 生产默认
+`https://pogglo-api.txqy0831.workers.dev`。**例外**：走配对码时忽略 config 里的
+endpoint（配对码是生产语境的委托，防止旧 localhost 配置劫持）；显式 `--endpoint` 仍最高优先（联调用）。
 
 ### 响应（平台侧定义，CLI 侧消费）
 
 ```jsonc
 // 成功
-{ "ok": true, "slug", "url", "status", "files", "bytes", "warnings": [] }
-// 拒绝 —— message 是写给 AI 的提示词，CLI 原样透传
-{ "ok": false, "code": "no_token | bad_zip | not_compiled | …", "message": "…" }
+{ "ok": true, "slug", "handle", "page_url", "play_url", "status", "warnings": [] }
+// 拒绝 —— msg / ai_fix_prompt 是写给 AI 的提示词，CLI 原样透传
+{ "ok": false, "code": "bad_zip | not_compiled | bad_code | …", "msg": "…", "ai_fix_prompt": "…" }
 ```
 
 ### 错误契约（系统灵魂，红线）
@@ -80,7 +92,7 @@ endpoint 解析顺序：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` 
 
 ## 5. v1 范围与非目标
 
-**范围**：`login` / `publish [dir]` / `whoami` 三命令 + 上述协议。
+**范围**：`login`（两步邮箱验证码）/ `publish [dir] [--code POG-XXXX] [--title] [--slug]` / `whoami` + 上述协议。
 **非目标**（明确不做，别顺手加）：
 
 - ❌ 逐客户端插件（VS Code 扩展等）— CLI 通吃是决策 D2
@@ -90,9 +102,10 @@ endpoint 解析顺序：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` 
 
 ## 6. 路线图挂钩（详见 docs/PROGRESS.md）
 
-- **M1 `--code` 发码流**：`publish --code ABC123` 跳过 login，改发 `x-pogglo-code` 头。
-  关键设计：码在**成功发布前可无限重试**（纠错循环需要），成功后绑定游戏 slug，同码重发=覆盖更新，24h TTL 兜底。服务端发码/验码在 ../pogglo/platform 实现，本仓库只加 flag 分支。
-- **M2 npm 首发**：抢注 `pogglo`（2026-07-23 查证 registry 404 未被占用）+ 生产端点切换。
+- **M1 `--code` 配对码流**（✅ 2026-07-23 落地）：`publish --code POG-XXXX` 免登录，发 `x-pogglo-code` 头。
+  语义：码在**成功发布前可重试**（纠错循环需要），成功后绑定游戏 slug，同码重发=覆盖更新。发码/验码在服务端实现。
+- **M2 npm 首发**（✅ 0.1.0 抢注 2026-07-23）+ 生产端点切换（✅ 0.2.0）。
+- 剩余：魔法指令文案跨客户端实测（见 PROGRESS 待办）。
 
 ## 7. 版本策略
 
