@@ -72,7 +72,7 @@ body: zip buffer
 ```
 
 endpoint 解析：`--endpoint` flag → config.json → `POGGLO_ENDPOINT` → 生产默认
-`https://pogglo-api.txqy0831.workers.dev`。**例外**：走配对码时忽略 config 里的
+`https://pogglo.com`（/v1/* 同域路由到 Worker；旧 workers.dev 子域已停用）。**例外**：走配对码时忽略 config 里的
 endpoint（配对码是生产语境的委托，防止旧 localhost 配置劫持）；显式 `--endpoint` 仍最高优先（联调用）。
 
 ### 响应（平台侧定义，CLI 侧消费）
