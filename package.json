@@ -1,0 +1,10 @@
+{
+  "name": "pogglo",
+  "version": "0.3.0",
+  "description": "Publish your AI-made browser game to Pogglo in one command",
+  "type": "module",
+  "bin": { "pogglo": "./cli.mjs" },
+  "dependencies": { "adm-zip": "^0.5.16" },
+  "repository": "github:shihaitian/pogglo-cli",
+  "license": "MIT"
+}
