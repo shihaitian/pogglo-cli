@@ -12,6 +12,21 @@
 - [x] pre-commit 钩子：改代码必须同 commit 更新本文档 + 测试全绿，否则拒绝提交（2026-07-23）
 - [x] npm 包名 `pogglo` 查证未被占用（registry 404，2026-07-23）——尽快抢注，见 M2
 
+## ✅ 账号体系协议同步（2026-07-23，跨仓库契约随主工程 D13 拍板）
+
+- [x] `login` 改两步邮箱验证码流程：`--email` 发码（本地平台回显 dev_code）→ `--email --code` 换 token 存 config；零 TTY，AI 分两次调用可完成（2026-07-23）
+- [x] `publish` 废除随机 token 自举与 `x-pogglo-author` 自报：未登录报 AI 可自纠的两步指引；报错优先级=先产物问题后身份问题（2026-07-23）
+- [x] `whoami` 显示邮箱；config 增 email 字段（2026-07-23）
+- [x] 测试 8→10 条（login 缺参指引 / 未登录 publish 指引）；与 ../pogglo/platform 真 HTTP 联调冒烟通过（2026-07-23）
+
+## ✅ v1 协议切换（2026-07-23，实验版转正为平台后的跨仓库契约同步）
+
+- [x] 端点默认生产 `https://pogglo-api.txqy0831.workers.dev`（POGGLO_ENDPOINT/--endpoint 可覆盖）（2026-07-23）
+- [x] login 打 `/v1/auth/send-code|verify`；错误体适配 v1 `{code,msg,ai_fix_prompt}`（ai_fix_prompt 透出给调用方 AI）（2026-07-23）
+- [x] **publish --code POG-XXXX 配对码路径**（M1 主打项落地）：发 `x-pogglo-code` 头免登录；配对码=网页签发的生产语境委托，**无视本地 config 的 endpoint**（防旧 localhost 配置劫持）（2026-07-23）
+- [x] publish 打 `/v1/submit`：Bearer 鉴权 + `x-title`（--title > pogglo.json > index.html \<title\>）+ `x-slug`；输出 page_url（创作者优先 URL）/play_url（2026-07-23）
+- [x] 测试 10/10 绿；生产真发布冒烟通过（配对码 POG-4P34 → e2e-smoke-game → 已清理）（2026-07-23）
+
 ## 🔨 进行中
 
 （空 — 领任务时移入本区并写上名字/会话与开始日期）

@@ -36,6 +36,24 @@ test('whoami without config points at login', () => {
   assert.match(r.stdout, /pogglo login/);
 });
 
+// 账号体系（2026-07-23）：login 是两步邮箱验证码流程，缺 --email 时给出可执行指引
+test('login without --email explains the two-step email flow', () => {
+  const r = run(['login']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /--email/);
+  assert.match(r.stdout, /--code/);
+});
+
+// 未登录 publish（有产物）→ 报身份错误且指引两步登录（AI 可自纠）
+test('publish with a valid package but no sign-in demands login', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-game-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>G</title>');
+  const r = run(['publish'], dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /Not signed in/);
+  assert.match(r.stderr, /--email/);
+});
+
 test('publish in a dir without index.html fails with an actionable AI-readable error', () => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-empty-'));
   const r = run(['publish'], empty);
