@@ -15,14 +15,17 @@ const HELP = `pogglo — publish AI-made browser games
 Usage:
   npx pogglo login --email <you@example.com>            request a sign-in code
   npx pogglo login --email <you@example.com> --code <6-digit>   finish sign-in
+  npx pogglo login --email <you@example.com> --handle <username> pick a username (new accounts)
   npx pogglo publish [dir] [--title <t>] [--slug <s>] [--orientation portrait|landscape] [--endpoint <url>]
   npx pogglo publish [dir] --code POG-XXXX              publish with a pairing code
   npx pogglo link <game>                                bind this folder to a published game
   npx pogglo whoami
 
 login is a two-step email flow (no password): the first call emails you a
-6-digit code, the second call (add --code) saves your token. Your account
-handle (from your email prefix) is the author of everything you publish.
+6-digit code, the second call (add --code) saves your token. First sign-in
+asks you to pick a username (3-16 chars: a-z, 0-9, _ or -) — it is UNIQUE and
+PERMANENT (it can never be changed) and is the author of everything you
+publish. Pass --handle together with --code, or in a follow-up call.
 
 publish with --code POG-XXXX needs no login at all: get a pairing code from
 the website (Publish page) and the upload is attributed to that account.
@@ -133,15 +136,41 @@ export function parseGameRef(raw) {
 }
 
 // Email-OTP sign-in (账号体系 2026-07-23)：两步、零交互提示符 —— AI agent 可以
-// 分两次调用完成登录，不需要 TTY。
+// 分多次调用完成登录，不需要 TTY。新邮箱多一步自选用户名（唯一且不可更改，
+// 2026-07-23 起不再自动截邮箱前缀）：verify 发 15 分钟注册票据，存 pending 文件续步。
+const PENDING_PATH = path.join(CONFIG_DIR, 'pending-signup.json');
+
+function saveAuth(endpoint, email, j) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify({ token: j.token, author: j.handle, email, endpoint }, null, 2));
+  console.log(`${j.is_new ? 'Account created' : 'Signed in'}: @${j.handle} (endpoint: ${endpoint})`);
+  if (j.is_new) console.log(`Your username @${j.handle} is permanent — it can never be changed.`);
+  console.log(`Config saved to ${CONFIG_PATH}. You can now run: npx pogglo publish`);
+}
+
+async function register(endpoint, email, handle) {
+  let pending = null;
+  try { pending = JSON.parse(fs.readFileSync(PENDING_PATH, 'utf8')); } catch {}
+  if (!pending || pending.email !== email) {
+    throw new Error(`No pending registration for ${email}. Start over:\n  npx pogglo login --email ${email}`);
+  }
+  const j = await api(pending.endpoint ?? endpoint, '/v1/auth/register', { email, reg_token: pending.reg_token, handle: String(handle) });
+  if (!j.ok) throw new Error(`Could not create the account (${j.code}):\n${errMsg(j)}`);
+  try { fs.rmSync(PENDING_PATH); } catch {}
+  saveAuth(pending.endpoint ?? endpoint, email, j);
+}
+
 async function login(flags) {
   const endpoint = flags.endpoint ?? readConfig()?.endpoint ?? DEFAULT_ENDPOINT;
   const email = flags.email;
   if (!email || email === true) {
-    console.log('Sign-in is a two-step email flow:\n  1. npx pogglo login --email you@example.com   (emails you a 6-digit code)\n  2. npx pogglo login --email you@example.com --code 123456');
+    console.log('Sign-in is a two-step email flow:\n  1. npx pogglo login --email you@example.com   (emails you a 6-digit code)\n  2. npx pogglo login --email you@example.com --code 123456\nNew accounts add a third step (pick a permanent username):\n  3. npx pogglo login --email you@example.com --handle your-name');
     process.exitCode = 1;
     return;
   }
+
+  // 第三步：只带 --handle → 用 pending 票据收尾注册
+  if (flags.handle && !flags.code) return register(endpoint, email, flags.handle);
 
   if (!flags.code) {
     const j = await api(endpoint, '/v1/auth/send-code', { email });
@@ -153,11 +182,17 @@ async function login(flags) {
 
   const j = await api(endpoint, '/v1/auth/verify', { email, code: String(flags.code) });
   if (!j.ok) throw new Error(`Sign-in failed (${j.code}):\n${errMsg(j)}`);
-  const config = { token: j.token, author: j.handle, email, endpoint };
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-  console.log(`${j.is_new ? 'Account created' : 'Signed in'}: @${j.handle} (endpoint: ${endpoint})`);
-  console.log(`Config saved to ${CONFIG_PATH}. You can now run: npx pogglo publish`);
+  if (j.need_handle) {
+    // 新账号：写 pending（15 分钟内有效），--handle 同行给了就一气呵成
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(PENDING_PATH, JSON.stringify({ email, reg_token: j.reg_token, endpoint }, null, 2));
+    if (flags.handle) return register(endpoint, email, flags.handle);
+    console.log('Email verified. New accounts pick a username: 3-16 chars, lowercase a-z, 0-9, _ or -.');
+    console.log('IMPORTANT: usernames are unique and PERMANENT — they can never be changed. Choose carefully.');
+    console.log(`Finish with:\n  npx pogglo login --email ${email} --handle <username>`);
+    return;
+  }
+  saveAuth(endpoint, email, j);
 }
 
 // 服务端 5xx 时 Cloudflare 返回 HTML 错误页；直接 res.json() 会把它掩盖成

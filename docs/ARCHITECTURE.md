@@ -54,10 +54,16 @@ src/pack.js       产物层：packageDirFor（. dist build out public www 顺序
 
 ```
 POST {endpoint}/v1/auth/send-code    { "email" }              → 邮箱收 6 位码（本地平台回显 dev_code）
-POST {endpoint}/v1/auth/verify       { "email", "code" }      → { ok, token, handle, is_new }
+POST {endpoint}/v1/auth/verify       { "email", "code" }      → 老用户 { ok, token, handle, is_new:false }
+                                                              → 新邮箱 { ok, need_handle:true, reg_token }（15 分钟票据，不建号）
+POST {endpoint}/v1/auth/register     { "email", "reg_token", "handle" } → { ok, token, handle, is_new:true }
 ```
 
-两步、零 TTY——AI agent 分两次调用即可完成登录，token 存 `~/.pogglo/config.json`。
+零 TTY——AI agent 分多次调用即可完成登录，token 存 `~/.pogglo/config.json`。
+新邮箱注册需自选用户名（2026-07-23 起不再自动截邮箱前缀）：3-16 位小写字母/数字/_/-，
+**全站唯一且注册后不可更改**（CLI 输出必须向用户明示这一点）。verify 返回的 reg_token
+存 `~/.pogglo/pending-signup.json`，`login --email X --handle <name>` 收尾（或与 --code 同行一气呵成）。
+handle 错误码：422 E_HANDLE（格式）/ 409 E_HANDLE_TAKEN（占用或保留词）/ 401 E_REG_EXPIRED（票据过期，重走验证码）。
 
 ### 发布
 

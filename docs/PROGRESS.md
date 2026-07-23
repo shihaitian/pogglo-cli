@@ -4,6 +4,13 @@
 > 动手前先读：`ARCHITECTURE.md` → `SPEC.md` → 本文档。
 > 最后更新：**2026-07-23**
 
+## ✅ 注册自选用户名（2026-07-23，跨仓库契约随主工程同步：verify 不再自动截邮箱前缀建号）
+
+- [x] login 适配 `/v1/auth/verify` 新语义：老用户原样拿 token；新邮箱收 `{need_handle, reg_token}`（15 分钟票据）→ 存 `~/.pogglo/pending-signup.json`，`--handle <name>` 收尾注册（可与 --code 同行一气呵成）（2026-07-23）
+- [x] 输出明示红线文案：用户名唯一且注册后**不可更改**（HELP、need_handle 指引、注册成功回执三处都提）（2026-07-23）
+- [x] 服务端配套（主工程 api）：`/v1/auth/register`（422 E_HANDLE / 409 E_HANDLE_TAKEN / 401 E_REG_EXPIRED）；规则 3-16 位小写字母/数字/_/-（2026-07-23）
+- [x] 测试 19/19 绿（无网络路径不受影响）；遗留：未与生产真流程冒烟（等 worker 部署后补）（2026-07-23）
+
 ## ✅ M0 · 拆库独立（2026-07-23 达成）
 
 - [x] 从主工程 `pogglo/cli` 拆出独立仓库，git 版本管理（2026-07-23）
