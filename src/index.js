@@ -262,21 +262,17 @@ async function publish(dirArg, flags) {
   const projectRoot = projectRootFor(startDir, pkgDir);
   const manifest = readManifest(projectRoot) ?? readManifest(pkgDir);
 
-  // 标题：--title > pogglo.json title > index.html <title>（剥引擎样板；无真名就地报错，不浪费上传）
+  // 标题：--title > pogglo.json title > index.html <title>（剥引擎样板前缀取真名）。
+  // 命名不设卡点（2026-07-23 拍板：slug 有创作者命名空间兜底，取名引导放在发布页魔法提示词的 --slug 里）；
+  // 剥完没真名就按原始 <title>（或 Untitled Game）上传，只温和提醒一句。
   let title = typeof flags.title === 'string' ? flags.title : (manifest?.title ?? null);
   if (!title) {
-    const m = fs.readFileSync(path.join(pkgDir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)<\/title>/i);
-    title = cleanEngineTitle(m ? m[1] : null);
-  }
-  if (!title) {
-    throw new Error(
-      'No meaningful game title found — the package only carries an engine default\n' +
-        '(e.g. "Unity WebGL Player" / a build-folder name), and the title becomes the game\'s permanent URL.\n' +
-        'Give it a real name, any of these works:\n' +
-        '  npx pogglo publish --title "My Cool Game"\n' +
-        '  or set "title" in pogglo.json\n' +
-        '  or put the real name in the <title> of index.html'
-    );
+    const raw = fs.readFileSync(path.join(pkgDir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? null;
+    title = cleanEngineTitle(raw) ?? raw?.trim().slice(0, 80) ?? null;
+    if (!title || !cleanEngineTitle(raw)) {
+      console.log('⚠ No real game name found (engine-default title) — publishing as-is. Consider --title "Name" / --slug my-game for a meaningful URL.');
+    }
+    title ??= 'Untitled Game';
   }
 
   console.log(`Packaging ${pkgDir} …`);

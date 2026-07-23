@@ -99,17 +99,17 @@ test('cleanEngineTitle strips engine boilerplate and rejects generic leftovers',
   assert.equal(cleanEngineTitle(''), null);
 });
 
-test('publish refuses to upload when only an engine-default title exists', () => {
+test('publish with engine-default title proceeds (soft warning only, no gate)', () => {
+  // 2026-07-23 拍板放开：命名不设卡点，只温和提醒（引导在发布页魔法提示词的 --slug）。
+  // endpoint 指向不通的端口 → 走到上传即证明未被标题拦截。
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-unity-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Unity WebGL Player | webgl</title>');
-  // 有登录态才走到标题检查：伪 HOME 写一份 config
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-home-'));
   fs.mkdirSync(path.join(fakeHome, '.pogglo'), { recursive: true });
-  fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://localhost:1' }));
+  fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://127.0.0.1:1' }));
   const r = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome } });
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /No meaningful game title/);
-  assert.match(r.stderr, /--title/);
+  assert.match(r.stdout, /publishing as-is/); // 提醒了
+  assert.match(r.stderr, /Could not reach/); // 但没拦——已走到网络层
 });
 
 test('projectRootFor keeps pogglo.json out of build output folders', async () => {
