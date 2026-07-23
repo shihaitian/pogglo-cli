@@ -7,8 +7,8 @@ import { packageDirFor, zipDir } from './pack.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.pogglo');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
-// v1 协议（2026-07-23 转正）：默认打生产 API，本地联调用 POGGLO_ENDPOINT 覆盖
-const DEFAULT_ENDPOINT = process.env.POGGLO_ENDPOINT ?? 'https://pogglo-api.txqy0831.workers.dev';
+// v1 协议（2026-07-23 转正）：默认打正式域（/v1/* Worker 路由），本地联调用 POGGLO_ENDPOINT 覆盖
+const DEFAULT_ENDPOINT = process.env.POGGLO_ENDPOINT ?? 'https://pogglo.com';
 
 const HELP = `pogglo — publish AI-made browser games
 
