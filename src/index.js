@@ -262,11 +262,21 @@ async function publish(dirArg, flags) {
   const projectRoot = projectRootFor(startDir, pkgDir);
   const manifest = readManifest(projectRoot) ?? readManifest(pkgDir);
 
-  // 标题：--title > pogglo.json title > index.html <title>
+  // 标题：--title > pogglo.json title > index.html <title>（剥引擎样板；无真名就地报错，不浪费上传）
   let title = typeof flags.title === 'string' ? flags.title : (manifest?.title ?? null);
   if (!title) {
     const m = fs.readFileSync(path.join(pkgDir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)<\/title>/i);
-    title = m ? m[1].trim().slice(0, 80) : 'Untitled Game';
+    title = cleanEngineTitle(m ? m[1] : null);
+  }
+  if (!title) {
+    throw new Error(
+      'No meaningful game title found — the package only carries an engine default\n' +
+        '(e.g. "Unity WebGL Player" / a build-folder name), and the title becomes the game\'s permanent URL.\n' +
+        'Give it a real name, any of these works:\n' +
+        '  npx pogglo publish --title "My Cool Game"\n' +
+        '  or set "title" in pogglo.json\n' +
+        '  or put the real name in the <title> of index.html'
+    );
   }
 
   console.log(`Packaging ${pkgDir} …`);
@@ -316,4 +326,23 @@ async function publish(dirArg, flags) {
 // v1 错误体：{code, msg, ai_fix_prompt}——ai_fix_prompt 是写给 AI 的修复提示，一并透出
 function errMsg(j) {
   return [j.msg ?? j.message, j.ai_fix_prompt].filter(Boolean).join('\n');
+}
+
+// index.html <title> 常是引擎样板（"Unity WebGL Player | webgl"、"Cocos Creator | game"…）。
+// 剥掉样板前缀取真名；剥完只剩构建目录名/引擎词这类无信息量残渣 → 返回 null（触发要真名的报错）。
+// 黑名单与服务端 GENERIC_SLUGS（../pogglo/api）同步维护。
+const ENGINE_BOILERPLATE = /^\s*(unity\s*webgl\s*player|团结引擎|tuanjie|cocos\s*creator|godot|phaser|made with \w+)\s*[|:\-–—]\s*/i;
+const GENERIC_TITLES = new Set([
+  'game', 'games', 'webgl', 'web-mobile', 'web-desktop', 'dist', 'build', 'out', 'output', 'public', 'www',
+  'index', 'html', 'html5', 'wasm', 'release', 'debug', 'app', 'main', 'src', 'export', 'exports',
+  'untitled', 'untitled game', 'untitled-game', 'new-project', 'new project', 'my-game', 'my game',
+  'test', 'demo', 'sample', 'example', 'unity', 'unity webgl player', 'tuanjie', 'cocos', 'godot', 'phaser', 'template',
+]);
+export function cleanEngineTitle(raw) {
+  if (!raw) return null;
+  let t = String(raw).trim();
+  for (let i = 0; i < 3 && ENGINE_BOILERPLATE.test(t); i++) t = t.replace(ENGINE_BOILERPLATE, '').trim();
+  t = t.slice(0, 80).trim();
+  if (!t || GENERIC_TITLES.has(t.toLowerCase())) return null;
+  return t;
 }

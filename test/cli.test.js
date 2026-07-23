@@ -87,6 +87,31 @@ test('parseGameRef accepts slug, handle/slug, and every game URL shape', async (
   assert.equal(parseGameRef(''), null);
 });
 
+// slug 语义整治（2026-07-23）：引擎样板标题剥壳，剥完无真名 = null（上游据此拒发要真名）
+test('cleanEngineTitle strips engine boilerplate and rejects generic leftovers', async () => {
+  const { cleanEngineTitle } = await import('../src/index.js');
+  assert.equal(cleanEngineTitle('Unity WebGL Player | Space Miner'), 'Space Miner');
+  assert.equal(cleanEngineTitle('团结引擎 | 太空矿工'), '太空矿工');
+  assert.equal(cleanEngineTitle('Cocos Creator | web-mobile'), null); // 剥完剩构建目录名 → 无效
+  assert.equal(cleanEngineTitle('Unity WebGL Player'), null);
+  assert.equal(cleanEngineTitle('webgl'), null);
+  assert.equal(cleanEngineTitle('Orbit Dodger'), 'Orbit Dodger'); // 正常标题原样通过
+  assert.equal(cleanEngineTitle(''), null);
+});
+
+test('publish refuses to upload when only an engine-default title exists', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-unity-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Unity WebGL Player | webgl</title>');
+  // 有登录态才走到标题检查：伪 HOME 写一份 config
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-home-'));
+  fs.mkdirSync(path.join(fakeHome, '.pogglo'), { recursive: true });
+  fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://localhost:1' }));
+  const r = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome } });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /No meaningful game title/);
+  assert.match(r.stderr, /--title/);
+});
+
 test('projectRootFor keeps pogglo.json out of build output folders', async () => {
   const { projectRootFor } = await import('../src/index.js');
   const root = path.join(os.tmpdir(), 'proj');
