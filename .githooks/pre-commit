@@ -1,0 +1,27 @@
+#!/bin/sh
+# 铁律守护（docs/SPEC.md §5）：
+#   1) 改了代码 → 必须同 commit 更新 docs/PROGRESS.md
+#   2) 改了代码 → 测试必须全绿
+# 绕过（--no-verify）视为违规提交，review 时打回。
+
+staged=$(git diff --cached --name-only)
+code_changed=$(printf '%s\n' "$staged" | grep -E '^(bin/|src/|test/|package\.json)' || true)
+progress_staged=$(printf '%s\n' "$staged" | grep -E '^docs/PROGRESS\.md$' || true)
+
+if [ -n "$code_changed" ] && [ -z "$progress_staged" ]; then
+  echo "✖ 提交被拒（铁律二）：本次改了代码，但 docs/PROGRESS.md 没有一起提交。" >&2
+  echo "  改动的代码文件：" >&2
+  printf '%s\n' "$code_changed" | sed 's/^/    /' >&2
+  echo "  请在 docs/PROGRESS.md 记录：做了什么 + 日期 + 遗留问题，然后 git add docs/PROGRESS.md 重新提交。" >&2
+  exit 1
+fi
+
+if [ -n "$code_changed" ]; then
+  echo "pre-commit: running npm test …"
+  npm test --silent || {
+    echo "✖ 提交被拒：测试未通过。修复后再提交。" >&2
+    exit 1
+  }
+fi
+
+exit 0
