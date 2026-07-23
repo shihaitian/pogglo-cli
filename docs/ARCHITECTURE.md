@@ -68,6 +68,7 @@ authorization: Bearer <token>        # 登录路径
 x-pogglo-code: POG-XXXX              # 或：配对码路径（网页签发，免登录）
 x-title: <encodeURIComponent(title)> # --title > pogglo.json > index.html <title>
 x-slug:  <slug>                      # --slug > pogglo.json 的 slug（项目身份，见下）
+x-orientation: portrait|landscape    # 可选：--orientation > pogglo.json；竖屏（手机形）游戏声明后游戏页 letterbox 而非拉宽；不带=服务端默认 landscape
 body: zip buffer
 ```
 

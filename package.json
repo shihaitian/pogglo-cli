@@ -1,6 +1,6 @@
 {
   "name": "pogglo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Publish AI-made browser games to pogglo from your terminal: npx pogglo publish",
   "type": "module",
   "bin": {

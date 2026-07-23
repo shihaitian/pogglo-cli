@@ -30,6 +30,16 @@ test('unknown command exits non-zero', () => {
   assert.equal(r.status, 1);
 });
 
+// -h / -help / --help 都等价于 help：打印用法且退出 0——退出 1 会让 agent
+// 误以为命令失败而进入自我修复循环（2026-07-23）。
+test('-h, -help and --help all print usage and exit 0', () => {
+  for (const argv of [['-h'], ['-help'], ['--help']]) {
+    const r = run(argv);
+    assert.equal(r.status, 0, `${argv[0]} should exit 0`);
+    assert.match(r.stdout, /Usage:/);
+  }
+});
+
 test('whoami without config points at login', () => {
   const r = run(['whoami']);
   assert.equal(r.status, 0);
@@ -110,6 +120,31 @@ test('publish with engine-default title proceeds (soft warning only, no gate)', 
   const r = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome } });
   assert.match(r.stdout, /publishing as-is/); // 提醒了
   assert.match(r.stderr, /Could not reach/); // 但没拦——已走到网络层
+});
+
+// 竖屏声明（2026-07-23，跨仓协议 x-orientation）：非法值在打包/上传前报错，合法值走到网络层
+test('publish rejects an invalid --orientation before packaging, accepts portrait', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-orient-'));
+  fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Tall Game</title>');
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-home-'));
+  fs.mkdirSync(path.join(fakeHome, '.pogglo'), { recursive: true });
+  fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://127.0.0.1:1' }));
+  const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome };
+  // 非法值 → 报错指出两个合法值（SPEC §3 错误契约：AI 可自纠）
+  const bad = spawnSync(process.execPath, [BIN, 'publish', '--orientation', 'sideways'], { cwd: dir, encoding: 'utf8', env });
+  assert.equal(bad.status, 1);
+  assert.match(bad.stderr, /Invalid orientation "sideways"/);
+  assert.match(bad.stderr, /portrait/);
+  assert.match(bad.stderr, /landscape/);
+  assert.ok(!bad.stdout.includes('Packaging'), 'must fail before packaging');
+  // 合法值 → 未被拦截，走到网络层（endpoint 不通证明已尝试上传）
+  const ok = spawnSync(process.execPath, [BIN, 'publish', '--orientation', 'portrait'], { cwd: dir, encoding: 'utf8', env });
+  assert.match(ok.stderr, /Could not reach/);
+  // pogglo.json 里的 orientation 字段同样生效（且非法同样被拦）
+  fs.writeFileSync(path.join(dir, 'pogglo.json'), JSON.stringify({ title: 'Tall Game', orientation: 'diagonal' }));
+  const badManifest = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env });
+  assert.equal(badManifest.status, 1);
+  assert.match(badManifest.stderr, /Invalid orientation "diagonal"/);
 });
 
 test('projectRootFor keeps pogglo.json out of build output folders', async () => {

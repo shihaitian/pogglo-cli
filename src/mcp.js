@@ -44,6 +44,8 @@ const manifestShape = {
   tags: z.array(z.string()).optional().describe('Up to 6 category tags'),
   emoji: z.string().optional().describe('One emoji used as the cover art'),
   model: z.string().optional().describe('Which AI model made this game, e.g. "Claude Opus 4.8"'),
+  orientation: z.enum(['landscape', 'portrait']).optional()
+    .describe('Screen shape the game is designed for. Use "portrait" for phone-shaped games (taller than wide) — the game page letterboxes them instead of stretching. Default: landscape.'),
 };
 
 /** 组装 server（导出以便离线测试注册面，不建立连接）。 */
@@ -89,18 +91,26 @@ export function buildServer() {
         'x-title': encodeURIComponent(metadata.title),
         'user-agent': 'pogglo-mcp',
       };
+      // 画面方向（协议头 x-orientation）：本次声明 > pogglo.json 里记住的；服务端默认 landscape
+      if (metadata.orientation ?? existing.orientation) headers['x-orientation'] = metadata.orientation ?? existing.orientation;
       // Slug: explicit param > slug remembered in pogglo.json from a previous
       // publish — so republishing updates the SAME game even if the title changed.
       if (slug ?? existing.slug) headers['x-slug'] = slug ?? existing.slug;
       if (code) headers['x-pogglo-code'] = code;
       else headers['authorization'] = `Bearer ${c.token}`;
 
-      let body;
+      let res;
       try {
-        const res = await fetch(endpoint + '/v1/submit', { method: 'POST', headers, body: zipDir(pkgDir) });
-        body = await res.json();
+        res = await fetch(endpoint + '/v1/submit', { method: 'POST', headers, body: zipDir(pkgDir) });
       } catch (err) {
         return errText(`Could not reach the pogglo platform at ${endpoint} (${err.cause?.code ?? err.message}).`);
+      }
+      let body;
+      try {
+        body = await res.json();
+      } catch {
+        // 5xx 时 Cloudflare 给 HTML 错误页——如实报服务端故障，别诱导 AI 改游戏（2026-07-23 排障实录）
+        return errText(`The pogglo server returned non-JSON (HTTP ${res.status}) — a SERVER-side failure, not a problem with the game. Do not modify the game; retry once, and report this message to Pogglo if it persists.`);
       }
       if (!body.ok) return errText(`Publish rejected (${body.code}): ${errMsg(body)}`);
       // Remember the identity the server confirmed (see CLI publish for rationale).

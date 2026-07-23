@@ -15,7 +15,7 @@ const HELP = `pogglo — publish AI-made browser games
 Usage:
   npx pogglo login --email <you@example.com>            request a sign-in code
   npx pogglo login --email <you@example.com> --code <6-digit>   finish sign-in
-  npx pogglo publish [dir] [--title <t>] [--slug <s>] [--endpoint <url>]
+  npx pogglo publish [dir] [--title <t>] [--slug <s>] [--orientation portrait|landscape] [--endpoint <url>]
   npx pogglo publish [dir] --code POG-XXXX              publish with a pairing code
   npx pogglo link <game>                                bind this folder to a published game
   npx pogglo whoami
@@ -29,6 +29,9 @@ the website (Publish page) and the upload is attributed to that account.
 
 publish finds your built game automatically (./dist, ./build, ./out, ./public
 or the current folder — whichever contains index.html), zips it and uploads.
+Pass --orientation portrait when the game is phone-shaped (taller than wide) —
+the game page then letterboxes it instead of stretching it. Defaults to
+landscape and is remembered in pogglo.json for future publishes.
 The project's pogglo.json supplies the title and the game slug; after a
 successful publish the CLI writes the slug back into pogglo.json, so the next
 publish updates the SAME game even if the title changed. Commit pogglo.json.
@@ -42,6 +45,13 @@ pogglo.json in the current folder.
 
 export async function main(argv) {
   const { cmd, args, flags } = parseArgs(argv);
+  // -h / -help / --help must behave exactly like `help`: print usage, exit 0.
+  // Exiting 1 here would send a calling AI agent into its self-repair loop
+  // over a command that did exactly what was asked.
+  if (flags.help === true || cmd === '-h' || cmd === '-help') {
+    console.log(HELP);
+    return;
+  }
   switch (cmd) {
     case 'login':
       return login(flags);
@@ -150,6 +160,22 @@ async function login(flags) {
   console.log(`Config saved to ${CONFIG_PATH}. You can now run: npx pogglo publish`);
 }
 
+// 服务端 5xx 时 Cloudflare 返回 HTML 错误页；直接 res.json() 会把它掩盖成
+// 误导性的 "Unexpected token '<' … is not valid JSON"（2026-07-23 排障实录）。
+// 这里先验明正身：非 JSON = 服务端故障，如实报状态码 + 正文开头，别让 AI 去改游戏。
+async function readJson(res) {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(
+      `The pogglo server returned non-JSON (HTTP ${res.status}) — a SERVER-side failure, not a problem with your game or command.\n` +
+        `Response starts with: ${raw.slice(0, 200).replace(/\s+/g, ' ').trim()}\n` +
+        'Do not modify the game. Retry once; if it persists, report this exact message to Pogglo and try again later.'
+    );
+  }
+}
+
 async function api(endpoint, path, body) {
   let res;
   try {
@@ -164,7 +190,7 @@ async function api(endpoint, path, body) {
         'If you are developing locally, start it first:  npm --prefix platform run dev'
     );
   }
-  return res.json();
+  return readJson(res);
 }
 
 // `link` = adopt an already-published game into this folder (like `vercel link`):
@@ -194,7 +220,7 @@ async function link(ref, flags) {
   const headers = config?.token ? { authorization: `Bearer ${config.token}` } : {};
   let j;
   try {
-    j = await (await fetch(`${endpoint}/v1/games/${encodeURIComponent(parsed.slug)}`, { headers })).json();
+    j = await readJson(await fetch(`${endpoint}/v1/games/${encodeURIComponent(parsed.slug)}`, { headers }));
   } catch (err) {
     throw new Error(
       `Could not reach the pogglo platform at ${endpoint} (${err.cause?.code ?? err.message}).\n` +
@@ -275,6 +301,18 @@ async function publish(dirArg, flags) {
     title ??= 'Untitled Game';
   }
 
+  // 画面方向（协议头 x-orientation）：--orientation > pogglo.json orientation > 不带（服务端默认 landscape）。
+  // 竖屏（手机形）游戏声明 portrait 后，游戏页做等比 letterbox 而不是拉宽。非法值在打包前报错（AI 可自纠）。
+  const orientRaw = typeof flags.orientation === 'string' ? flags.orientation : manifest?.orientation;
+  const orientation = orientRaw != null ? String(orientRaw).toLowerCase() : null;
+  if (orientation && !['portrait', 'landscape'].includes(orientation)) {
+    throw new Error(
+      `Invalid orientation "${orientRaw}".\n` +
+        'Use --orientation portrait for phone-shaped games (taller than wide), or --orientation landscape (the default).\n' +
+        'Fix the flag (or the "orientation" field in pogglo.json), then run publish again.'
+    );
+  }
+
   console.log(`Packaging ${pkgDir} …`);
   const zip = zipDir(pkgDir);
   console.log(`Uploading ${(zip.length / 1024).toFixed(1)} KB to ${endpoint} …`);
@@ -284,6 +322,7 @@ async function publish(dirArg, flags) {
   const slugWanted = typeof flags.slug === 'string' ? flags.slug : manifest?.slug;
   const headers = { 'content-type': 'application/zip', 'x-title': encodeURIComponent(title) };
   if (typeof slugWanted === 'string' && slugWanted) headers['x-slug'] = slugWanted;
+  if (orientation) headers['x-orientation'] = orientation;
   if (pairCode) headers['x-pogglo-code'] = pairCode;
   else headers['authorization'] = `Bearer ${config.token}`;
 
@@ -297,7 +336,7 @@ async function publish(dirArg, flags) {
     );
   }
 
-  const body = await res.json();
+  const body = await readJson(res);
   if (!body.ok) {
     // AI-readable rejection — print verbatim so an agent can self-correct.
     throw new Error(`Publish rejected (${body.code}):\n${errMsg(body)}`);
@@ -312,8 +351,9 @@ async function publish(dirArg, flags) {
   // Remember the identity the server confirmed: next publish (even after a
   // title change or on another machine, via git) updates this same game.
   const rootManifest = readManifest(projectRoot);
-  if (body.slug && (rootManifest?.slug !== body.slug || rootManifest?.title !== title)) {
-    const file = writeManifest(projectRoot, { title, slug: body.slug });
+  if (body.slug && (rootManifest?.slug !== body.slug || rootManifest?.title !== title || (orientation && rootManifest?.orientation !== orientation))) {
+    // orientation 一并记住（有声明才写）：下次 publish 不带 flag 也不丢竖屏声明
+    const file = writeManifest(projectRoot, { title, slug: body.slug, ...(orientation ? { orientation } : {}) });
     if (rootManifest?.slug !== body.slug) console.log(`  Saved ${file} (slug: ${body.slug}) — future publishes update this game. Commit it.`);
   }
   return body;

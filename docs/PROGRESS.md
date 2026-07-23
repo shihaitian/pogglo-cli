@@ -41,13 +41,31 @@
 - [x] MCP publish_game 同步：读 pogglo.json 已存 slug 自动带 x-slug，成功后写回 body.slug（2026-07-23）
 - [x] 服务端配套（主工程 api/src/index.mjs）：配对码首次成功发布后绑定 slug（KV `code:`），同码重发=覆盖更新，每次使用 TTL 顺延 24h——落实 ARCHITECTURE §6 M1 拍板语义（2026-07-23）
 - [x] 测试 10→15 条全绿；link 生产冒烟通过（URL 解析/写文件/错主人报错）（2026-07-23）
-- [ ] 遗留：发版（minor：新命令+新行为）；M3 的"配对码语义端到端验证"现在具备验证条件
+- [x] 遗留：发版（minor：新命令+新行为）——0.3.0 已发布；后续改动进 0.4.0（2026-07-23）
 
 ## ✅ slug 语义整治（2026-07-23，最终拍板：全放开 + 提示词引导）
 
 - [x] `cleanEngineTitle`：index.html \<title\> 剥引擎样板前缀（Unity WebGL Player/团结引擎/Cocos Creator…）取真名（2026-07-23）
 - [x] **命名不设卡点**（用户拍板：slug 有创作者命名空间兜底）：剥不出真名 → 按原样上传 + 一句温和提醒；取名引导放在发布页魔法提示词（加 `--slug`/`--title` 示范）；服务端 E_BAD_SLUG 硬拒收同步撤销（2026-07-23）
 - [x] 测试 17/17：剥壳矩阵 + 引擎默认标题"提醒但不拦"（2026-07-23）
+
+## ✅ 竖屏游戏声明（2026-07-23，跨仓协议新增 `x-orientation`，与主工程 api/site 同步落地）
+
+- [x] publish 新 flag `--orientation portrait|landscape`：--orientation > pogglo.json `orientation` 字段 > 不带头（服务端默认 landscape）；非法值在打包前三要素报错（AI 可自纠）（2026-07-23）
+- [x] 发布成功且有声明时把 orientation 写回项目根 pogglo.json——下次 publish 不带 flag 也不丢竖屏声明（2026-07-23）
+- [x] MCP publish_game 同步：manifestShape 加 `orientation` 枚举（optional），metadata 声明或 pogglo.json 已存值 → 带 `x-orientation` 头（2026-07-23）
+- [x] 测试 +1（非法值打包前拦截 / portrait 走到网络层 / pogglo.json 非法值同样拦截）（2026-07-23）
+- [x] 服务端配套（主工程）：D1 games 加 `orientation` 列（migrations/2026-07-23-orientation.sql）；/v1/submit 读头、/v1/submit-github 读 body、PATCH 可改；覆盖更新不带头沿用已存值；站点游戏页对 portrait 做 9:16 等比 letterbox（2026-07-23）
+
+## ✅ help 别名修正（2026-07-23）
+
+- [x] `-h` / `-help` / `--help` 一律等价 `help`：打印用法且退出 0——此前 `-help` 打印帮助却退出 1，会把调用方 agent 误导进自我修复循环；测试 +1（三种写法断言退出码）（2026-07-23）
+
+## ✅ 服务端非 JSON 响应如实报错（2026-07-23，1101 排障产物）
+
+- [x] `readJson(res)`：所有 `res.json()` 调用点（api()/link/publish + MCP publish_game）先验明正身——服务端 5xx 时 Cloudflare 返回 HTML 错误页，旧代码把它掩盖成误导性的 "Unexpected token '<' … is not valid JSON"；现在如实报 HTTP 状态码 + 正文前 200 字节，并明确"服务端故障，不要改游戏"（2026-07-23）
+- [x] 背景：生产 1101 事故（orientation 迁移欠账 + 新 worker 上线撞缺列库）排障时，CLI 报错方向性误导；服务端同步加了入口 try/catch → `E_INTERNAL` JSON 兜底（主工程 api/src/index.mjs）（2026-07-23）
+- [x] 测试 18/18 绿（无新增用例：readJson 属报错文案层，端到端路径已覆盖）（2026-07-23）
 
 ## 🔨 进行中
 
@@ -86,5 +104,6 @@
 |---|---|---|
 | 0.1.0 | 2026-07-23 | npm 首发抢注包名（旧协议，随后被 0.2.0 取代） |
 | 0.2.0 | 2026-07-23 | v1 生产协议：邮箱验证码登录（两步零 TTY）、`publish --code POG-XXXX` 配对码免登录、默认生产端点、`/v1/submit` Bearer 鉴权、`ai_fix_prompt` 透传、README 面向创作者重写；测试 10/10 |
-| 0.3.0 | 未发布 | MCP server 并包（bin: pogglo-mcp）+ list_games/publish_game 生产验证——**待 npm publish** |
-| 0.2.1 | 2026-07-23 | 默认端点切正式域 `https://pogglo.com`（/v1/* Worker 路由已生效）；已发布为 @latest，git tag v0.2.1 = `13749d9`（shasum 与 npm 线上核对一致） |
+| 0.2.1 | 2026-07-23 | 默认端点切正式域 `https://pogglo.com`（/v1/* Worker 路由已生效）；git tag v0.2.1 = `13749d9`（shasum 与 npm 线上核对一致） |
+| 0.3.0 | 2026-07-23 | MCP server 并包（bin: pogglo-mcp）+ `link` 命令 + pogglo.json slug 记忆 + 引擎标题剥壳；已发布（npm 线上确认） |
+| 0.4.0 | 未发布 | `--orientation portrait\|landscape` 竖屏声明（x-orientation 跨仓协议）+ 命名软提醒放开 + readJson 非 JSON 如实报错 + `-h/-help/--help` 退出 0；测试 19/19——**待 npm publish** |
