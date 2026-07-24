@@ -84,7 +84,8 @@
 - [x] 测试 19→27：resolvePublish/categories 纯逻辑 9 条 + 更新 2 条旧用例（必填闸门 / orientation 带 title+slug）（2026-07-24）
 - [x] 服务端配套（主工程 api）：games 加 5 列（migrations/2026-07-24-game-meta.sql）；/v1/submit 读头、/v1/submit-github 读 body、PATCH 可改；枚举非法 E_BAD_CATEGORY/E_BAD_PLATFORMS；覆盖更新不带字段沿用历史；GAME_COLS 透出；api 测试 33/33（2026-07-24）
 - [x] 站点配套：categories.mjs + 首页类目导航（空类目不显示）+ 游戏页 controls/AI 作者行 + 设备由 platforms 推导 + 发布页魔法指令带全字段 + cat.\<id> i18n × 8 语言（build 186 页绿）（2026-07-24）
-- [ ] 遗留：发版 0.4.1 尚未 npm publish（npm 上 0.4.0 已是 orientation 版；本次发布元数据 8 字段改动并入 0.4.1）；生产真发布冒烟待 worker 部署 + D1 迁移后补
+- [x] slug 强制 ASCII（对齐服务端 SLUG_RE，2026-07-24 转 language-neutral URL）：resolvePublish/link 校验非 ASCII slug → AI 可读报错；mcp.js slug 加 zod regex；并入未发布的 0.4.1（2026-07-24）
+- [ ] 遗留：发版 0.4.1 尚未 npm publish（npm 上 0.4.0 已是 orientation 版；发布元数据 8 字段 + slug ASCII 强制并入 0.4.1）；生产真发布冒烟待 worker 部署 + D1 迁移后补
 
 ## 🔨 进行中
 

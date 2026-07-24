@@ -259,7 +259,7 @@ async function link(ref, flags) {
     return;
   }
   const parsed = parseGameRef(ref);
-  if (!parsed || !/^[a-z0-9一-龥-]{1,64}$/.test(parsed.slug)) {
+  if (!parsed || !/^[a-z0-9-]{1,64}$/.test(parsed.slug)) {
     throw new Error(
       `Could not parse a game reference from "${ref}".\n` +
         'Expected a slug (cow-puzzle), handle/slug (shihaitian/cow-puzzle), or a game URL (https://pogglo.com/shihaitian/cow-puzzle/).\n' +
@@ -431,6 +431,13 @@ export function resolvePublish(manifest, flags, rawHtmlTitle) {
       `Invalid orientation "${orientation}".\n` +
       'Use --orientation portrait for phone-shaped games (taller than wide), or --orientation landscape.\n' +
       'Fix the flag (or the "orientation" field in pogglo.json), then run publish again.' };
+  }
+  // slug 必须 ASCII（2026-07-24 拍板）：/<handle>/ 后那段 url-name 只能英文；title 不限任何语言。
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return { error:
+      `Invalid --slug "${slug}".\n` +
+      'The slug (the url-name after /<handle>/ in the game URL) must be lowercase a–z, 0–9 and hyphens only — no spaces, uppercase, Chinese, or other characters.\n' +
+      'Use something like "cow-puzzle". The title can be in any language; only the slug is restricted. Fix it (flag or the "slug" field in pogglo.json), then run publish again.' };
   }
 
   // 建议项：缺省只警告；category/platforms 给了但非法则报错（枚举，AI 可自纠）

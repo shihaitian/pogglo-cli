@@ -40,6 +40,19 @@ test('invalid orientation → error', () => {
   assert.match(r.error, /orientation/i);
 });
 
+test('slug must be ASCII: Chinese/space/uppercase → error; hyphenated ascii → ok', () => {
+  for (const bad of ['牛推箱子', 'cow puzzle', 'CowPuzzle', 'cow_puzzle', '-cow', 'cow-']) {
+    const r = resolvePublish(null, { ...ok, slug: bad }, null);
+    assert.ok(r.error, `expected error for slug "${bad}"`);
+    assert.match(r.error, /slug/i);
+  }
+  // title 可含中文，slug 纯 ASCII → 放行
+  const good = resolvePublish(null, { title: '牛推箱子', slug: 'cow-puzzle', orientation: 'landscape' }, null);
+  assert.equal(good.error, undefined);
+  assert.equal(good.slug, 'cow-puzzle');
+  assert.equal(good.title, '牛推箱子');
+});
+
 test('category: invalid → error listing valid ids; valid (any case) → normalized lowercase', () => {
   const bad = resolvePublish(null, { ...ok, category: 'roguelike' }, null);
   assert.ok(bad.error);

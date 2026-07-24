@@ -39,8 +39,8 @@ const errMsg = (j) => [j.msg ?? j.message, j.ai_fix_prompt].filter(Boolean).join
 // 建议项：description / controls / category / platforms / ai —— 你写了游戏，就顺手把它的商店页也写好。
 const manifestShape = {
   title: z.string().describe('REQUIRED. The game\'s real name, shown everywhere.'),
-  slug: z.string().optional()
-    .describe('REQUIRED (here or as the top-level `slug` param). Unique URL id; reused to UPDATE the same game and saved into pogglo.json.'),
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase a–z, 0–9 and hyphens only (e.g. "cow-puzzle") — no spaces, uppercase, Chinese or other characters').optional()
+    .describe('REQUIRED (here or as the top-level `slug` param). Unique URL id = the url-name after /<handle>/ in the game URL. ASCII only: lowercase a–z, 0–9, hyphens (e.g. "cow-puzzle") — no Chinese/spaces/uppercase; the title may be any language. Reused to UPDATE the same game and saved into pogglo.json.'),
   orientation: z.enum(['landscape', 'portrait']).optional()
     .describe('REQUIRED. Screen shape: "portrait" for phone-shaped games (taller than wide) — the game page letterboxes them instead of stretching — else "landscape".'),
   description: z.string().optional().describe('Suggested. 1-4 sentences; becomes the game page text.'),
@@ -68,7 +68,7 @@ export function buildServer() {
     {
       dir: z.string().describe('Absolute path to the game project or its build output'),
       metadata: z.object(manifestShape).describe('Game page metadata (title required; written into pogglo.json)'),
-      slug: z.string().optional().describe('Wanted URL slug (defaults to slugified title)'),
+      slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase a–z, 0–9 and hyphens only (e.g. "cow-puzzle")').optional().describe('Wanted URL slug — ASCII only (lowercase a–z, 0–9, hyphens; e.g. "cow-puzzle"). Defaults to slugified title.'),
       code: z.string().optional().describe('Pairing code POG-XXXX from the website — publishes without login'),
     },
     async ({ dir, metadata, slug, code }) => {
