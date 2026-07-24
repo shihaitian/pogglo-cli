@@ -31,22 +31,53 @@ npx pogglo login --email you@example.com --code 123456   # 换 token
 ## publish — 发布 / 更新（同一条命令）
 
 ```bash
-npx pogglo publish [dir] [--title <t>] [--slug <s>] [--code POG-XXXX] [--endpoint <url>]
+npx pogglo publish [dir] --title <t> --slug <s> --orientation portrait|landscape \
+  [--description <text>] [--controls <text>] [--category <id>] \
+  [--platforms keyboard|touch|both] [--ai "<tools>"] [--code POG-XXXX] [--endpoint <url>]
 ```
 
 - **产物定位**：`dir` 缺省为当前目录；在 `.`、`dist/`、`build/`、`out/`、`public/`、`www/`
   中找第一个含 `index.html` 的目录，打 zip 上传（跳过 node_modules/.git 等垃圾）。
 - **身份**：`--code POG-XXXX`（网页 Publish 页领的 24h 配对码，免登录）优先，
   否则用本地 token。配对码固定打生产端点，不受本地 config 影响（防 localhost 劫持）。
-- **标题**：`--title` > `pogglo.json` 的 `title` > `index.html` 的 `<title>`。
-- **是哪款游戏（slug）**：`--slug` > **`pogglo.json` 的 `slug`** > 服务端由标题推导。
+
+### 发布字段（2026-07-24 协议扩展）
+
+每个字段取值一律 `--flag > pogglo.json > (仅 title 兜底剥 <title>)`，并写回 pogglo.json 供下次复用。
+
+**必填**（缺失或非法在打包前报 AI 可读错误，当场停下）：
+
+| flag | 说明 |
+|---|---|
+| `--title <t>` | 游戏真名；引擎样板 `<title>`（Unity WebGL Player 等）不算真名 |
+| `--slug <s>` | 唯一 URL id，用作**更新同一款游戏**；首发写进 pogglo.json，提交进 git |
+| `--orientation portrait\|landscape` | portrait = 手机形（高>宽），游戏页做等比 letterbox |
+
+**建议填写**（缺省只 `⚠` 提醒不拦；`--category`/`--platforms` 给了非法值则报错）：
+
+| flag | 说明 |
+|---|---|
+| `--description <text>` | 1–4 句，成为游戏页正文 |
+| `--controls <text>` | 玩法/操作说明，如 `"WASD to move, Space to jump"` |
+| `--category <id>` | CrazyGames 16 类目之一：action, adventure, arcade, board, card, clicker, driving, io, puzzle, shooting, simulation, sports, strategy, thinky, trivia, word |
+| `--platforms keyboard\|touch\|both` | 支持输入：keyboard=键鼠/手柄，touch=触摸，both=两者 |
+| `--ai "<tools>"` | 制作该游戏的 AI 工具/模型，多值格式 `Tool[,model][;Tool2[,model2]]`，如 `"Claude,claude-opus-4.8;Codex"`；不知道模型只写工具名也行 |
 
 ### 发布即绑定：pogglo.json 是项目身份
 
 首次发布成功后，CLI 把服务端确认的 slug 写进**项目根目录**的 `pogglo.json`：
 
 ```json
-{ "title": "Cow Puzzle", "slug": "cow-puzzle" }
+{
+  "title": "Cow Puzzle",
+  "slug": "cow-puzzle",
+  "orientation": "landscape",
+  "description": "Push the cows onto the matching pens.",
+  "controls": "Arrow keys to push",
+  "category": "puzzle",
+  "platforms": "both",
+  "ai_author": "Claude,claude-opus-4.8"
+}
 ```
 
 - 之后在这个文件夹里再跑 `publish`（参数都不用带）就是**更新同一款游戏**：

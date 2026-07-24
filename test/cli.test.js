@@ -109,20 +109,25 @@ test('cleanEngineTitle strips engine boilerplate and rejects generic leftovers',
   assert.equal(cleanEngineTitle(''), null);
 });
 
-test('publish with engine-default title proceeds (soft warning only, no gate)', () => {
-  // 2026-07-23 拍板放开：命名不设卡点，只温和提醒（引导在发布页魔法提示词的 --slug）。
-  // endpoint 指向不通的端口 → 走到上传即证明未被标题拦截。
+// 2026-07-24 拍板：title/slug/orientation 必填（取代旧「命名不设卡点」）。
+// 引擎样板 <title> 不算真名 → 必填校验在打包/上传前拦下，报错列出三项缺失，AI 可自纠。
+test('publish gates on missing required fields (title/slug/orientation)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-unity-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Unity WebGL Player | webgl</title>');
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-home-'));
   fs.mkdirSync(path.join(fakeHome, '.pogglo'), { recursive: true });
   fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://127.0.0.1:1' }));
   const r = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env: { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome } });
-  assert.match(r.stdout, /publishing as-is/); // 提醒了
-  assert.match(r.stderr, /Could not reach/); // 但没拦——已走到网络层
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /required publish fields/i);
+  assert.match(r.stderr, /--title/);
+  assert.match(r.stderr, /--slug/);
+  assert.match(r.stderr, /--orientation/);
+  assert.ok(!r.stdout.includes('Packaging'), 'must fail before packaging');
 });
 
-// 竖屏声明（2026-07-23，跨仓协议 x-orientation）：非法值在打包/上传前报错，合法值走到网络层
+// 竖屏声明（跨仓协议 x-orientation）：非法值在打包/上传前报错，合法值走到网络层。
+// title/slug 现为必填，故本用例统一带上，单独考验 orientation 校验。
 test('publish rejects an invalid --orientation before packaging, accepts portrait', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pogglo-orient-'));
   fs.writeFileSync(path.join(dir, 'index.html'), '<!doctype html><title>Tall Game</title>');
@@ -130,18 +135,19 @@ test('publish rejects an invalid --orientation before packaging, accepts portrai
   fs.mkdirSync(path.join(fakeHome, '.pogglo'), { recursive: true });
   fs.writeFileSync(path.join(fakeHome, '.pogglo', 'config.json'), JSON.stringify({ token: 'pog_x', author: 'x', endpoint: 'http://127.0.0.1:1' }));
   const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome };
+  const base = ['publish', '--title', 'Tall Game', '--slug', 'tall-game'];
   // 非法值 → 报错指出两个合法值（SPEC §3 错误契约：AI 可自纠）
-  const bad = spawnSync(process.execPath, [BIN, 'publish', '--orientation', 'sideways'], { cwd: dir, encoding: 'utf8', env });
+  const bad = spawnSync(process.execPath, [BIN, ...base, '--orientation', 'sideways'], { cwd: dir, encoding: 'utf8', env });
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /Invalid orientation "sideways"/);
   assert.match(bad.stderr, /portrait/);
   assert.match(bad.stderr, /landscape/);
   assert.ok(!bad.stdout.includes('Packaging'), 'must fail before packaging');
   // 合法值 → 未被拦截，走到网络层（endpoint 不通证明已尝试上传）
-  const ok = spawnSync(process.execPath, [BIN, 'publish', '--orientation', 'portrait'], { cwd: dir, encoding: 'utf8', env });
+  const ok = spawnSync(process.execPath, [BIN, ...base, '--orientation', 'portrait'], { cwd: dir, encoding: 'utf8', env });
   assert.match(ok.stderr, /Could not reach/);
-  // pogglo.json 里的 orientation 字段同样生效（且非法同样被拦）
-  fs.writeFileSync(path.join(dir, 'pogglo.json'), JSON.stringify({ title: 'Tall Game', orientation: 'diagonal' }));
+  // pogglo.json 里的 orientation 字段同样生效（且非法同样被拦），title/slug 从 manifest 供给
+  fs.writeFileSync(path.join(dir, 'pogglo.json'), JSON.stringify({ title: 'Tall Game', slug: 'tall-game', orientation: 'diagonal' }));
   const badManifest = spawnSync(process.execPath, [BIN, 'publish'], { cwd: dir, encoding: 'utf8', env });
   assert.equal(badManifest.status, 1);
   assert.match(badManifest.stderr, /Invalid orientation "diagonal"/);

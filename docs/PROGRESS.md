@@ -74,6 +74,18 @@
 - [x] 背景：生产 1101 事故（orientation 迁移欠账 + 新 worker 上线撞缺列库）排障时，CLI 报错方向性误导；服务端同步加了入口 try/catch → `E_INTERNAL` JSON 兜底（主工程 api/src/index.mjs）（2026-07-23）
 - [x] 测试 18/18 绿（无新增用例：readJson 属报错文案层，端到端路径已覆盖）（2026-07-23）
 
+## ✅ 发布元数据扩展（2026-07-24，用户拍板：AI 发布带完整商店页字段，跨仓协议 + 三仓同步）
+
+- [x] 8 字段协议：必填 `--title` / `--slug` / `--orientation`（取代旧「命名不设卡点」）；建议项 `--description` / `--controls`（玩法说明自由文本）/ `--category`（CrazyGames 16 类目枚举）/ `--platforms`（keyboard\|touch\|both 输入枚举）/ `--ai`（AI 作者多值 `Tool[,model][;…]`，如 `Claude,claude-opus-4.8;Codex`）（2026-07-24）
+- [x] `src/categories.js`：16 类目 + 平台枚举 + 归一化器，三仓单一来源（与 api CATEGORIES / site categories.mjs 同步）（2026-07-24）
+- [x] `resolvePublish()` 纯函数（离线可测）：必填缺失/枚举非法 → AI 可读三要素报错当场停；建议项缺省只提醒；引擎样板 `<title>` 不算真名（2026-07-24）
+- [x] 协议头：必填三项恒带，建议项有值才带；自由文本百分号编码（CJK 经 HTTP 头必编）。全字段写回 pogglo.json，下次 publish 复用（2026-07-24）
+- [x] MCP publish_game 同步：manifestShape 加 slug/category/platforms/ai + controls 改自由文本；必填校验 + 枚举校验；落盘键名与 CLI 对齐（ai→ai_author）（2026-07-24）
+- [x] 测试 19→27：resolvePublish/categories 纯逻辑 9 条 + 更新 2 条旧用例（必填闸门 / orientation 带 title+slug）（2026-07-24）
+- [x] 服务端配套（主工程 api）：games 加 5 列（migrations/2026-07-24-game-meta.sql）；/v1/submit 读头、/v1/submit-github 读 body、PATCH 可改；枚举非法 E_BAD_CATEGORY/E_BAD_PLATFORMS；覆盖更新不带字段沿用历史；GAME_COLS 透出；api 测试 33/33（2026-07-24）
+- [x] 站点配套：categories.mjs + 首页类目导航（空类目不显示）+ 游戏页 controls/AI 作者行 + 设备由 platforms 推导 + 发布页魔法指令带全字段 + cat.\<id> i18n × 8 语言（build 186 页绿）（2026-07-24）
+- [ ] 遗留：发版 0.4.1 尚未 npm publish（npm 上 0.4.0 已是 orientation 版；本次发布元数据 8 字段改动并入 0.4.1）；生产真发布冒烟待 worker 部署 + D1 迁移后补
+
 ## 🔨 进行中
 
 （空 — 领任务时移入本区并写上名字/会话与开始日期）
@@ -113,4 +125,5 @@
 | 0.2.0 | 2026-07-23 | v1 生产协议：邮箱验证码登录（两步零 TTY）、`publish --code POG-XXXX` 配对码免登录、默认生产端点、`/v1/submit` Bearer 鉴权、`ai_fix_prompt` 透传、README 面向创作者重写；测试 10/10 |
 | 0.2.1 | 2026-07-23 | 默认端点切正式域 `https://pogglo.com`（/v1/* Worker 路由已生效）；git tag v0.2.1 = `13749d9`（shasum 与 npm 线上核对一致） |
 | 0.3.0 | 2026-07-23 | MCP server 并包（bin: pogglo-mcp）+ `link` 命令 + pogglo.json slug 记忆 + 引擎标题剥壳；已发布（npm 线上确认） |
-| 0.4.0 | 未发布 | `--orientation portrait\|landscape` 竖屏声明（x-orientation 跨仓协议）+ 命名软提醒放开 + readJson 非 JSON 如实报错 + `-h/-help/--help` 退出 0；测试 19/19——**待 npm publish** |
+| 0.4.0 | 2026-07-23 | `--orientation` 竖屏声明 + readJson 非 JSON 如实报错 + `-h/-help/--help` 退出 0；已发布（npm 线上 = 0.4.0） |
+| 0.4.1 | 未发布 | **发布元数据扩展**（title/slug/orientation 必填；description/controls/category/platforms/ai 建议项，跨仓协议 8 字段）；测试 27/27——**待 npm publish**（0.4.0 已被 orientation 版占用，故进 0.4.1） |

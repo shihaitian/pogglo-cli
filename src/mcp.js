@@ -9,6 +9,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { packageDirFor, zipDir } from './pack.js';
+import { CATEGORY_IDS, normCategory, PLATFORMS, normPlatform } from './categories.js';
 
 const DEFAULT_ENDPOINT = process.env.POGGLO_ENDPOINT ?? 'https://pogglo.com';
 const CONFIG_PATH = path.join(os.homedir(), '.pogglo', 'config.json');
@@ -34,18 +35,23 @@ const errText = (t) => ({ content: [{ type: 'text', text: t }], isError: true })
 // v1 错误体：msg + ai_fix_prompt（后者就是写给你——调用方 AI——的修复指引）
 const errMsg = (j) => [j.msg ?? j.message, j.ai_fix_prompt].filter(Boolean).join('\n');
 
+// 发布元数据（2026-07-24 协议扩展）。必填：title / slug（顶层 slug 参数或 metadata.slug）/ orientation。
+// 建议项：description / controls / category / platforms / ai —— 你写了游戏，就顺手把它的商店页也写好。
 const manifestShape = {
-  title: z.string().describe('Game title shown everywhere'),
-  tagline: z.string().optional().describe('One-line hook shown under the title'),
-  description: z.string().optional().describe('2-4 sentences. Becomes the SEO text of the game page.'),
-  howToPlay: z.array(z.string()).optional(),
-  controls: z.array(z.object({ input: z.string(), action: z.string() })).optional(),
-  faq: z.array(z.object({ q: z.string(), a: z.string() })).optional(),
-  tags: z.array(z.string()).optional().describe('Up to 6 category tags'),
-  emoji: z.string().optional().describe('One emoji used as the cover art'),
-  model: z.string().optional().describe('Which AI model made this game, e.g. "Claude Opus 4.8"'),
+  title: z.string().describe('REQUIRED. The game\'s real name, shown everywhere.'),
+  slug: z.string().optional()
+    .describe('REQUIRED (here or as the top-level `slug` param). Unique URL id; reused to UPDATE the same game and saved into pogglo.json.'),
   orientation: z.enum(['landscape', 'portrait']).optional()
-    .describe('Screen shape the game is designed for. Use "portrait" for phone-shaped games (taller than wide) — the game page letterboxes them instead of stretching. Default: landscape.'),
+    .describe('REQUIRED. Screen shape: "portrait" for phone-shaped games (taller than wide) — the game page letterboxes them instead of stretching — else "landscape".'),
+  description: z.string().optional().describe('Suggested. 1-4 sentences; becomes the game page text.'),
+  controls: z.string().optional().describe('Suggested. How to play, e.g. "WASD to move, Space to jump".'),
+  category: z.string().optional().describe(`Suggested. One CrazyGames category: ${CATEGORY_IDS.join(', ')}.`),
+  platforms: z.string().optional()
+    .describe('Suggested. Supported input: "keyboard" (mouse/keyboard/gamepad), "touch" (touchscreen), or "both".'),
+  ai: z.string().optional()
+    .describe('Suggested. AI tool(s) that made the game, format "Tool[,model][;Tool2[,model2]]", e.g. "Claude,claude-opus-4.8;Codex". Naming just the tool ("Claude") is fine if you don\'t know the model.'),
+  tagline: z.string().optional().describe('Optional one-line hook (stored locally in pogglo.json).'),
+  emoji: z.string().optional().describe('Optional one emoji used as cover art (stored locally).'),
 };
 
 /** 组装 server（导出以便离线测试注册面，不建立连接）。 */
@@ -78,24 +84,56 @@ export function buildServer() {
             'If the project is uncompiled, run its build first (npm install && npm run build), then call publish_game again with the build output.'
         );
       }
-      // 元数据随包落盘（平台未来读 pogglo.json 充实游戏页；标题现在就用它）
+      // 元数据落盘（pogglo.json：平台读它充实游戏页；下次发布复用免重传）
       const manifestPath = path.join(pkgDir, 'pogglo.json');
       let existing = {};
       try {
         existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       } catch {}
-      fs.writeFileSync(manifestPath, JSON.stringify({ ...existing, ...metadata }, null, 2));
+
+      // 必填 title/slug/orientation（2026-07-24 拍板）+ 建议项枚举校验。
+      // 报错文本 = 写给调用方 AI 的修复提示（本包错误契约），isError 透出。
+      const asStr = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+      const title = asStr(metadata.title);
+      const wantSlug = asStr(slug) ?? asStr(metadata.slug) ?? asStr(existing.slug);
+      const orientation = asStr(metadata.orientation) ?? asStr(existing.orientation);
+      const missing = [];
+      if (!title) missing.push('metadata.title — the game\'s real name');
+      if (!wantSlug) missing.push('slug — unique id used to update the same game (the top-level `slug` param or metadata.slug)');
+      if (!orientation) missing.push('metadata.orientation — "portrait" or "landscape"');
+      if (missing.length) return errText('Missing required publish fields (required on every publish):\n  ' + missing.join('\n  ') + '\nAdd them, then call publish_game again.');
+      if (!['portrait', 'landscape'].includes(orientation)) return errText(`Invalid orientation "${orientation}". Use "portrait" (taller than wide) or "landscape", then call publish_game again.`);
+
+      const catRaw = asStr(metadata.category) ?? asStr(existing.category);
+      const category = catRaw ? normCategory(catRaw) : null;
+      if (catRaw && !category) return errText(`Unknown category "${catRaw}". Pick one of: ${CATEGORY_IDS.join(', ')}. It is a suggested field — fix or omit it, then call publish_game again.`);
+      const platRaw = asStr(metadata.platforms) ?? asStr(existing.platforms);
+      const platforms = platRaw ? normPlatform(platRaw) : null;
+      if (platRaw && !platforms) return errText(`Unknown platforms "${platRaw}". Use one of: ${PLATFORMS.join(', ')} (keyboard = mouse/keyboard/gamepad, touch = touchscreen, both = both). Suggested field — fix or omit, then call publish_game again.`);
+      const description = asStr(metadata.description) ?? asStr(existing.description);
+      const controls = asStr(metadata.controls) ?? asStr(existing.controls);
+      const aiAuthor = asStr(metadata.ai) ?? asStr(existing.ai_author);
+
+      // 落盘：键名与 CLI pogglo.json 对齐（ai → ai_author，orientation/枚举归一化）
+      const saved = { ...existing, ...metadata, slug: wantSlug, orientation };
+      delete saved.ai;
+      if (category) saved.category = category;
+      if (platforms) saved.platforms = platforms;
+      if (aiAuthor) saved.ai_author = aiAuthor;
+      fs.writeFileSync(manifestPath, JSON.stringify(saved, null, 2));
 
       const headers = {
         'content-type': 'application/zip',
-        'x-title': encodeURIComponent(metadata.title),
+        'x-title': encodeURIComponent(title),
+        'x-slug': encodeURIComponent(wantSlug),
+        'x-orientation': orientation,
         'user-agent': 'pogglo-mcp',
       };
-      // 画面方向（协议头 x-orientation）：本次声明 > pogglo.json 里记住的；服务端默认 landscape
-      if (metadata.orientation ?? existing.orientation) headers['x-orientation'] = metadata.orientation ?? existing.orientation;
-      // Slug: explicit param > slug remembered in pogglo.json from a previous
-      // publish — so republishing updates the SAME game even if the title changed.
-      if (slug ?? existing.slug) headers['x-slug'] = slug ?? existing.slug;
+      if (description) headers['x-description'] = encodeURIComponent(description);
+      if (controls) headers['x-controls'] = encodeURIComponent(controls);
+      if (category) headers['x-category'] = category;
+      if (platforms) headers['x-platforms'] = platforms;
+      if (aiAuthor) headers['x-ai-author'] = encodeURIComponent(aiAuthor);
       if (code) headers['x-pogglo-code'] = code;
       else headers['authorization'] = `Bearer ${c.token}`;
 
@@ -114,8 +152,8 @@ export function buildServer() {
       }
       if (!body.ok) return errText(`Publish rejected (${body.code}): ${errMsg(body)}`);
       // Remember the identity the server confirmed (see CLI publish for rationale).
-      if (body.slug && existing.slug !== body.slug) {
-        fs.writeFileSync(manifestPath, JSON.stringify({ ...existing, ...metadata, slug: body.slug }, null, 2));
+      if (body.slug && saved.slug !== body.slug) {
+        fs.writeFileSync(manifestPath, JSON.stringify({ ...saved, slug: body.slug }, null, 2));
       }
       return text(
         `Published "${metadata.title}" by @${body.handle}\n` +

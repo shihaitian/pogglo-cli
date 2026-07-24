@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { packageDirFor, zipDir } from './pack.js';
+import { CATEGORY_IDS, normCategory, PLATFORMS, normPlatform } from './categories.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.pogglo');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
@@ -16,7 +17,7 @@ Usage:
   npx pogglo login --email <you@example.com>            request a sign-in code
   npx pogglo login --email <you@example.com> --code <6-digit>   finish sign-in
   npx pogglo login --email <you@example.com> --handle <username> pick a username (new accounts)
-  npx pogglo publish [dir] [--title <t>] [--slug <s>] [--orientation portrait|landscape] [--endpoint <url>]
+  npx pogglo publish [dir] --title <t> --slug <s> --orientation portrait|landscape [suggested…] [--endpoint <url>]
   npx pogglo publish [dir] --code POG-XXXX              publish with a pairing code
   npx pogglo link <game>                                bind this folder to a published game
   npx pogglo whoami
@@ -32,12 +33,27 @@ the website (Publish page) and the upload is attributed to that account.
 
 publish finds your built game automatically (./dist, ./build, ./out, ./public
 or the current folder — whichever contains index.html), zips it and uploads.
-Pass --orientation portrait when the game is phone-shaped (taller than wide) —
-the game page then letterboxes it instead of stretching it. Defaults to
-landscape and is remembered in pogglo.json for future publishes.
-The project's pogglo.json supplies the title and the game slug; after a
-successful publish the CLI writes the slug back into pogglo.json, so the next
-publish updates the SAME game even if the title changed. Commit pogglo.json.
+
+REQUIRED on every publish (also accepted from pogglo.json):
+  --title <t>                    the game's real name
+  --slug <s>                     unique URL id; reused to UPDATE the same game.
+                                 Saved into pogglo.json on first publish — commit it.
+  --orientation portrait|landscape   portrait = phone-shaped (taller than wide);
+                                 the game page letterboxes it instead of stretching.
+
+SUGGESTED (fill these in — you wrote the game, so write its store page too):
+  --description <text>           1-4 sentences; becomes the game page text.
+  --controls <text>             how to play, e.g. "WASD to move, Space to jump".
+  --category <id>                one of: ${CATEGORY_IDS.join(', ')}.
+  --platforms keyboard|touch|both   which inputs it supports (keyboard = mouse/
+                                 keyboard/gamepad, touch = touchscreen).
+  --ai <tools>                   the AI tool(s) that made it, format
+                                 "Tool[,model][;Tool2[,model2]]", e.g.
+                                 "Claude,claude-opus-4.8;Codex". Naming just the
+                                 tool ("Claude") is fine if you don't know the model.
+
+Every value above is remembered in pogglo.json, so later publishes reuse them
+(and update the SAME game even if the title changed). Commit pogglo.json.
 
 link restores that identity in a fresh clone (or adopts an existing game):
   npx pogglo link shihaitian/cow-puzzle
@@ -323,41 +339,33 @@ async function publish(dirArg, flags) {
   const projectRoot = projectRootFor(startDir, pkgDir);
   const manifest = readManifest(projectRoot) ?? readManifest(pkgDir);
 
-  // 标题：--title > pogglo.json title > index.html <title>（剥引擎样板前缀取真名）。
-  // 命名不设卡点（2026-07-23 拍板：slug 有创作者命名空间兜底，取名引导放在发布页魔法提示词的 --slug 里）；
-  // 剥完没真名就按原始 <title>（或 Untitled Game）上传，只温和提醒一句。
-  let title = typeof flags.title === 'string' ? flags.title : (manifest?.title ?? null);
-  if (!title) {
-    const raw = fs.readFileSync(path.join(pkgDir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? null;
-    title = cleanEngineTitle(raw) ?? raw?.trim().slice(0, 80) ?? null;
-    if (!title || !cleanEngineTitle(raw)) {
-      console.log('⚠ No real game name found (engine-default title) — publishing as-is. Consider --title "Name" / --slug my-game for a meaningful URL.');
-    }
-    title ??= 'Untitled Game';
-  }
-
-  // 画面方向（协议头 x-orientation）：--orientation > pogglo.json orientation > 不带（服务端默认 landscape）。
-  // 竖屏（手机形）游戏声明 portrait 后，游戏页做等比 letterbox 而不是拉宽。非法值在打包前报错（AI 可自纠）。
-  const orientRaw = typeof flags.orientation === 'string' ? flags.orientation : manifest?.orientation;
-  const orientation = orientRaw != null ? String(orientRaw).toLowerCase() : null;
-  if (orientation && !['portrait', 'landscape'].includes(orientation)) {
-    throw new Error(
-      `Invalid orientation "${orientRaw}".\n` +
-        'Use --orientation portrait for phone-shaped games (taller than wide), or --orientation landscape (the default).\n' +
-        'Fix the flag (or the "orientation" field in pogglo.json), then run publish again.'
-    );
+  // 发布字段解析（必填 title/slug/orientation + 建议项）：--flag > pogglo.json > (title 兜底剥 <title>)。
+  // title/slug/orientation 现为必填（2026-07-24 用户拍板，取代旧「命名不设卡点」）：缺失或枚举非法 →
+  // 抛 AI 可读错误当场停下（错误文本即喂回 AI 的修复提示）。建议项缺省只提醒不拦。
+  const rawHtmlTitle = fs.readFileSync(path.join(pkgDir, 'index.html'), 'utf8').match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? null;
+  const resolved = resolvePublish(manifest, flags, rawHtmlTitle);
+  if (resolved.error) throw new Error(resolved.error);
+  const { title, slug: slugWanted, orientation, meta, warnings } = resolved;
+  if (warnings.length) {
+    console.log(`⚠ Suggested fields not set: ${warnings.join(', ')} — they fill in the game page. Pass them (npx pogglo help) or add to pogglo.json.`);
   }
 
   console.log(`Packaging ${pkgDir} …`);
   const zip = zipDir(pkgDir);
   console.log(`Uploading ${(zip.length / 1024).toFixed(1)} KB to ${endpoint} …`);
 
-  // Slug: explicit --slug > the slug remembered in pogglo.json (added by a
-  // previous publish or `pogglo link`) > none (server derives it from title).
-  const slugWanted = typeof flags.slug === 'string' ? flags.slug : manifest?.slug;
-  const headers = { 'content-type': 'application/zip', 'x-title': encodeURIComponent(title) };
-  if (typeof slugWanted === 'string' && slugWanted) headers['x-slug'] = slugWanted;
-  if (orientation) headers['x-orientation'] = orientation;
+  // 协议头：必填三项恒带；建议项仅在有值时带。自由文本百分号编码（HTTP 头不能带非 Latin-1，CJK 必编）。
+  const headers = {
+    'content-type': 'application/zip',
+    'x-title': encodeURIComponent(title),
+    'x-slug': encodeURIComponent(slugWanted),
+    'x-orientation': orientation,
+  };
+  if (meta.description) headers['x-description'] = encodeURIComponent(meta.description);
+  if (meta.controls) headers['x-controls'] = encodeURIComponent(meta.controls);
+  if (meta.category) headers['x-category'] = meta.category;
+  if (meta.platforms) headers['x-platforms'] = meta.platforms;
+  if (meta.ai_author) headers['x-ai-author'] = encodeURIComponent(meta.ai_author);
   if (pairCode) headers['x-pogglo-code'] = pairCode;
   else headers['authorization'] = `Bearer ${config.token}`;
 
@@ -383,15 +391,77 @@ async function publish(dirArg, flags) {
   console.log(`  Direct play →  ${body.play_url}`);
   if (body.note) console.log(`  ${body.note}`);
 
-  // Remember the identity the server confirmed: next publish (even after a
-  // title change or on another machine, via git) updates this same game.
+  // Remember the identity the server confirmed + this run's declared metadata:
+  // the next publish (even after a title change or on another machine via git)
+  // updates this same game and reuses every field without re-passing flags.
   const rootManifest = readManifest(projectRoot);
-  if (body.slug && (rootManifest?.slug !== body.slug || rootManifest?.title !== title || (orientation && rootManifest?.orientation !== orientation))) {
-    // orientation 一并记住（有声明才写）：下次 publish 不带 flag 也不丢竖屏声明
-    const file = writeManifest(projectRoot, { title, slug: body.slug, ...(orientation ? { orientation } : {}) });
+  const patch = { title, slug: body.slug, orientation };
+  for (const [k, v] of Object.entries(meta)) if (v) patch[k] = v; // 只写有值的建议项，不覆成空
+  if (body.slug && (!rootManifest || Object.entries(patch).some(([k, v]) => rootManifest[k] !== v))) {
+    const file = writeManifest(projectRoot, patch);
     if (rootManifest?.slug !== body.slug) console.log(`  Saved ${file} (slug: ${body.slug}) — future publishes update this game. Commit it.`);
   }
   return body;
+}
+
+// 发布字段解析（纯函数，离线可测）：必填 title/slug/orientation + 建议项。
+// 优先级：--flag（flags）> pogglo.json（manifest）>（仅 title）剥 index.html <title> 取真名。
+// 返回 { error: <AI 可读文案> }（调用方 throw），或 { title, slug, orientation, meta, warnings }。
+export function resolvePublish(manifest, flags, rawHtmlTitle) {
+  const m = manifest ?? {};
+  const s = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+
+  const title = s(flags.title) ?? s(m.title) ?? cleanEngineTitle(rawHtmlTitle);
+  const slug = s(flags.slug) ?? s(m.slug);
+  let orientation = s(flags.orientation) ?? s(m.orientation);
+  orientation = orientation ? orientation.toLowerCase() : null;
+
+  const missing = [];
+  if (!title) missing.push('--title "Your Game Name"   (a real name — the engine-default <title> does not count)');
+  if (!slug) missing.push('--slug your-game            (unique id; reused to update the SAME game later)');
+  if (!orientation) missing.push('--orientation portrait|landscape   (portrait = taller than wide)');
+  if (missing.length) {
+    return { error:
+      'Missing required publish fields (title, slug and orientation are required on every publish):\n  ' +
+      missing.join('\n  ') +
+      '\nPass them as flags, or set them in pogglo.json, then run publish again. Full field list: npx pogglo help' };
+  }
+  if (!['portrait', 'landscape'].includes(orientation)) {
+    return { error:
+      `Invalid orientation "${orientation}".\n` +
+      'Use --orientation portrait for phone-shaped games (taller than wide), or --orientation landscape.\n' +
+      'Fix the flag (or the "orientation" field in pogglo.json), then run publish again.' };
+  }
+
+  // 建议项：缺省只警告；category/platforms 给了但非法则报错（枚举，AI 可自纠）
+  const description = s(flags.description) ?? s(m.description);
+  const controls = s(flags.controls) ?? s(m.controls);
+  const aiAuthor = s(flags.ai) ?? s(m.ai_author);
+  const catRaw = s(flags.category) ?? s(m.category);
+  const category = catRaw ? normCategory(catRaw) : null;
+  if (catRaw && !category) {
+    return { error:
+      `Unknown --category "${catRaw}".\n` +
+      `Pick one of: ${CATEGORY_IDS.join(', ')}.\n` +
+      'Category is a suggested field — fix it, or drop it if unsure, then run publish again.' };
+  }
+  const platRaw = s(flags.platforms) ?? s(m.platforms);
+  const platforms = platRaw ? normPlatform(platRaw) : null;
+  if (platRaw && !platforms) {
+    return { error:
+      `Unknown --platforms "${platRaw}".\n` +
+      `Use one of: ${PLATFORMS.join(', ')} (keyboard = mouse/keyboard/gamepad, touch = touchscreen, both = both).\n` +
+      'This is a suggested field — fix it, or drop it if unsure, then run publish again.' };
+  }
+
+  const warnings = [];
+  if (!description) warnings.push('description');
+  if (!controls) warnings.push('controls');
+  if (!category) warnings.push('category');
+  if (!platforms) warnings.push('platforms');
+  if (!aiAuthor) warnings.push('ai');
+
+  return { title, slug, orientation, meta: { description, controls, category, platforms, ai_author: aiAuthor }, warnings };
 }
 
 // v1 错误体：{code, msg, ai_fix_prompt}——ai_fix_prompt 是写给 AI 的修复提示，一并透出
