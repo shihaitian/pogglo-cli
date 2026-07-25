@@ -1,10 +1,26 @@
 {
   "name": "pogglo",
-  "version": "0.3.0",
-  "description": "Publish your AI-made browser game to Pogglo in one command",
+  "version": "0.4.1",
+  "description": "Publish AI-made browser games to pogglo from your terminal: npx pogglo publish",
   "type": "module",
-  "bin": { "pogglo": "./cli.mjs" },
-  "dependencies": { "adm-zip": "^0.5.16" },
-  "repository": "github:shihaitian/pogglo-cli",
-  "license": "MIT"
+  "bin": {
+    "pogglo": "bin/pogglo.js",
+    "pogglo-mcp": "bin/pogglo-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "src/"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "prepare": "git config core.hooksPath .githooks || exit 0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "adm-zip": "^0.5.16",
+    "zod": "^4.4.3"
+  }
 }
